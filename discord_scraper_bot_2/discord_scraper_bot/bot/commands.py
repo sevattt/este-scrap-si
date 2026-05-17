@@ -215,14 +215,15 @@ def register_commands(bot):
         e.set_footer(text="AutoScraper Bot v1.0")
         await ctx.send(embed=e)
 
-    # ── !ml ──────────────────────────────────────────────────────────────
+        # ── !ml ──────────────────────────────────────────────────────────────
     @bot.command(name="ml", aliases=["mercadolibre", "meli"])
     async def mercadolibre(ctx, *, busqueda: str):
         import aiohttp
         import pandas as pd
+        from urllib.parse import quote
         from scraper.exporter import export_data
 
-        pais = "MCO"  # Colombia, cambia a MLA=Argentina, MLM=Mexico, MLC=Chile
+        pais = "MCO"  # Colombia, MLA=Argentina, MLM=Mexico, MLC=Chile
 
         msg = await ctx.send(embed=discord.Embed(
             title=f"🛒 Buscando en MercadoLibre: {busqueda}",
@@ -230,18 +231,44 @@ def register_commands(bot):
         ))
 
         try:
-            url = f"https://api.mercadolibre.com/sites/{pais}/search?q={busqueda}&limit=50"
+            # Codificar búsqueda correctamente
+            query = quote(busqueda)
 
-            async with aiohttp.ClientSession() as session:
+            url = f"https://api.mercadolibre.com/sites/{pais}/search?q={query}&limit=50"
+
+            # Headers para evitar bloqueos
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            }
+
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(url) as r:
+
+                    # Verificar status HTTP
+                    if r.status != 200:
+                        text = await r.text()
+
+                        await msg.edit(embed=discord.Embed(
+                            title="❌ Error API MercadoLibre",
+                            description=f"Status: `{r.status}`\n```{text[:500]}```",
+                            color=0xef4444
+                        ))
+                        return
+
                     data = await r.json()
 
             items = data.get("results", [])
 
             if not items:
                 await msg.edit(embed=discord.Embed(
-                    description="No se encontraron resultados.",
-                    color=0xef4444
+                    title="⚠️ Sin resultados",
+                    description=(
+                        f"No encontré productos para:\n"
+                        f"```{busqueda}```\n\n"
+                        f"URL consultada:\n{url}"
+                    ),
+                    color=0xf59e0b
                 ))
                 return
 
@@ -258,6 +285,7 @@ def register_commands(bot):
 
             df = pd.DataFrame(rows)
 
+            # Exportar
             df_export = df.copy()
             df_export["tipo"] = "producto"
             df_export["fuente"] = "mercadolibre.com.co"
@@ -290,6 +318,7 @@ def register_commands(bot):
             e.add_field(name="Precio más alto", value=f"`${precio_max:,.0f}`", inline=True)
             e.add_field(name="Precio promedio", value=f"`${precio_avg:,.0f}`", inline=True)
 
+            # Top productos
             top3 = df.nsmallest(3, "Precio_num")[["Producto", "Precio", "Envío gratis"]]
 
             preview = "\n".join(
@@ -305,6 +334,7 @@ def register_commands(bot):
 
             await msg.edit(embed=e)
 
+            # Adjuntar archivos
             discord_files = [
                 discord.File(f)
                 for f in files
@@ -316,7 +346,9 @@ def register_commands(bot):
 
         except Exception as ex:
             await msg.edit(embed=discord.Embed(
-                description=f"❌ Error: {ex}",
+                title="❌ Error inesperado",
+                description=f"```{str(ex)[:1000]}```",
                 color=0xef4444
             ))
-            print(ex)
+
+            print("ERROR ML:", ex)
