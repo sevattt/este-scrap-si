@@ -1,4 +1,4 @@
-"""
+"""engine v3"""
 Motor de scraping para el bot de Discord.
 Versión mejorada con: sesión persistente, headers completos,
 reintentos automáticos y debug detallado.
@@ -129,12 +129,9 @@ def _fetch(url, engine, ua, proxy, session):
     return _fetch_requests(url, session)
 
 def _fetch_requests(url, session):
-    api_key = os.environ.get("SCRAPERAPI_KEY")
-    if api_key:
-        url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
     try:
         session.headers.update({"Referer": "https://www.google.com/"})
-        r = session.get(url, timeout=60, allow_redirects=True)
+        r = session.get(url, timeout=20, allow_redirects=True)
         r.raise_for_status()
         try:
             text = r.content.decode(r.encoding or "utf-8", errors="replace") if r.encoding else r.text
@@ -146,7 +143,7 @@ def _fetch_requests(url, session):
     except requests.exceptions.ConnectionError as e:
         return None, 0, f"Conexion fallida: {e}"
     except requests.exceptions.Timeout:
-        return None, 0, "Timeout (>60s)"
+        return None, 0, "Timeout (>20s)"
     except Exception as e:
         return None, 0, str(e)
 
@@ -218,6 +215,15 @@ def _extract(soup, url, types):
                 add("telefono", ph.strip())
 
     if "prices" in types:
+        # AMAZON FIX: unir precio partido (37. + 99)
+        price_whole = soup.find_all(class_=re.compile(r"a-price-whole"))
+        price_frac  = soup.find_all(class_=re.compile(r"a-price-fraction"))
+        if price_whole:
+            for i, whole in enumerate(price_whole):
+                w = whole.get_text(strip=True).replace(".", "").replace(",", "")
+                f = price_frac[i].get_text(strip=True) if i < len(price_frac) else "00"
+                if w.isdigit():
+                    add("precio", f"${w}.{f}", "amazon-price")
         for el in soup.find_all(class_=re.compile(r"price|precio|cost|amount|valor|monto", re.I)):
             t = el.get_text(strip=True)
             if re.search(r"\d", t):
