@@ -215,159 +215,110 @@ def register_commands(bot):
         e.set_footer(text="AutoScraper Bot v1.0")
         await ctx.send(embed=e)
 
- # ── !ml ──
-  @bot.command(name="ml", aliases=["mercadolibre","meli"])
-  async def mercadolibre(ctx, *, busqueda: str):
-      import aiohttp
-    pais = "MCO"  # Colombia, cambia a MLA=Argentina, MLM=Mexico, MLC=Chile
+# ── !ml ──
+@bot.command(name="ml", aliases=["mercadolibre", "meli"])
+async def mercadolibre(ctx, *, busqueda: str):
+    import aiohttp
+    import pandas as pd
+
+    from scraper.exporter import export_data
+
+    pais = "MCO"  # Colombia, MLA=Argentina, MLM=Mexico, etc.
+
     msg = await ctx.send(embed=discord.Embed(
         title=f"🛒 Buscando en MercadoLibre: {busqueda}",
         color=0xFFE600
     ))
+
     try:
         url = f"https://api.mercadolibre.com/sites/{pais}/search?q={busqueda}&limit=50"
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as r:
                 data = await r.json()
-        
+
         items = data.get("results", [])
+
         if not items:
-            await msg.edit(embed=discord.Embed(description="No se encontraron resultados.", color=0xef4444))
+            await msg.edit(embed=discord.Embed(
+                description="No se encontraron resultados.",
+                color=0xef4444
+            ))
             return
 
         # Construir DataFrame
         rows = [{
-            "Producto":   i.get("title","")[:100],
-            "Precio":     f"${i.get('price',0):,.0f}",
+            "Producto": i.get("title", "")[:100],
+            "Precio": f"${i.get('price', 0):,.0f}",
             "Precio_num": i.get("price", 0),
-            "Condición":  i.get("condition",""),
-            "Link":       i.get("permalink",""),
-            "Vendedor":   i.get("seller",{}).get("nickname",""),
-            "Envío gratis": "✅" if i.get("shipping",{}).get("free_shipping") else "❌",
+            "Condición": i.get("condition", ""),
+            "Link": i.get("permalink", ""),
+            "Vendedor": i.get("seller", {}).get("nickname", ""),
+            "Envío gratis": "✅" if i.get("shipping", {}).get("free_shipping") else "❌",
         } for i in items]
 
-        import pandas as pd, os
-        from scraper.exporter import export_data
         df = pd.DataFrame(rows)
+
+        # Exportar
         df_export = df.copy()
         df_export["tipo"] = "producto"
         df_export["fuente"] = "mercadolibre.com.co"
         df_export["url_pagina"] = url
         df_export["dato"] = df_export["Producto"]
         df_export["atributo"] = df_export["Precio"]
-        df_export["fecha"] = __import__('datetime').datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        df_export["fecha"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        ts = __import__('datetime').datetime.now().strftime("%Y%m%d_%H%M%S")
-        files = export_data(df_export, [], "data", f"meli_{ts}", "all")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        files = export_data(
+            df_export,
+            [],
+            "data",
+            f"meli_{ts}",
+            "all"
+        )
 
         precio_min = df["Precio_num"].min()
         precio_max = df["Precio_num"].max()
         precio_avg = df["Precio_num"].mean()
 
-        e = discord.Embed(title=f"✅ MercadoLibre — {busqueda}", color=0xFFE600)
+        e = discord.Embed(
+            title=f"✅ MercadoLibre — {busqueda}",
+            color=0xFFE600
+        )
+
         e.add_field(name="Resultados", value=f"`{len(items)}`", inline=True)
         e.add_field(name="Precio más bajo", value=f"`${precio_min:,.0f}`", inline=True)
         e.add_field(name="Precio más alto", value=f"`${precio_max:,.0f}`", inline=True)
         e.add_field(name="Precio promedio", value=f"`${precio_avg:,.0f}`", inline=True)
-        
-        top3 = df.nsmallest(3, "Precio_num")[["Producto","Precio","Envío gratis"]]
-        preview = "\n".join(f"• {r['Producto'][:50]} — **{r['Precio']}** {r['Envío gratis']}" for _, r in top3.iterrows())
-        e.add_field(name="🏆 Top 3 más baratos", value=preview, inline=False)
-        
+
+        top3 = df.nsmallest(3, "Precio_num")[["Producto", "Precio", "Envío gratis"]]
+
+        preview = "\n".join(
+            f"• {r['Producto'][:50]} — **{r['Precio']}** {r['Envío gratis']}"
+            for _, r in top3.iterrows()
+        )
+
+        e.add_field(
+            name="🏆 Top 3 más baratos",
+            value=preview,
+            inline=False
+        )
+
         await msg.edit(embed=e)
-        discord_files = [discord.File(f) for f in files if os.path.exists(f) and os.path.getsize(f) < 8*1024*1024]
+
+        discord_files = [
+            discord.File(f)
+            for f in files
+            if os.path.exists(f) and os.path.getsize(f) < 8 * 1024 * 1024
+        ]
+
         if discord_files:
             await ctx.send(files=discord_files)
 
     except Exception as ex:
-        await msg.edit(embed=discord.Embed(description=f"❌ Error: {ex}", color=0xef4444))
-# ── Función central de scraping ──────────────────
-async def ejecutar_scraping(ctx, urls):
-    cfg = load_config()
-
-    # Mensaje inicial
-    e_start = discord.Embed(
-        title="🕷️ Scraping iniciado",
-        description="\n".join(f"• `{u}`" for u in urls[:5]) + (f"\n... y {len(urls)-5} más" if len(urls) > 5 else ""),
-        color=COLOR_INFO
-    )
-    e_start.add_field(name="Motor",  value=f"`{cfg['engine']}`",              inline=True)
-    e_start.add_field(name="Tipos",  value=f"`{', '.join(cfg['extract_types'])}`", inline=True)
-    e_start.add_field(name="Status", value="⏳ Procesando...",                 inline=False)
-    e_start.set_footer(text="Te avisaré cuando termine.")
-    msg = await ctx.send(embed=e_start)
-
-    start_time = datetime.now()
-
-    try:
-        # Ejecutar scraping en thread separado para no bloquear Discord
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: run_scraping_async(urls=urls, cfg=cfg)
-        )
-
-        elapsed = (datetime.now() - start_time).seconds
-
-        if result["error"]:
-            await msg.edit(embed=embed_err(
-                "Error en el scraping",
-                f"```{result['error'][:300]}```"
-            ))
-            return
-
-        df     = result["df"]
-        files  = result["files"]
-        n_rows = len(df) if df is not None else 0
-
-        # Embed de resultados
-        e_done = discord.Embed(
-            title="✅ Scraping completado",
-            color=COLOR_OK,
-            timestamp=datetime.utcnow()
-        )
-        e_done.add_field(name="📊 Registros",  value=f"`{n_rows}`",          inline=True)
-        e_done.add_field(name="🌐 Páginas",    value=f"`{len(urls)}`",        inline=True)
-        e_done.add_field(name="⏱️ Tiempo",     value=f"`{elapsed}s`",         inline=True)
-
-        # Resumen por tipo
-        if df is not None and not df.empty and "tipo" in df.columns:
-            resumen = df["tipo"].value_counts().head(6)
-            tipo_txt = "\n".join(f"`{t}`: **{c}**" for t, c in resumen.items())
-            e_done.add_field(name="📋 Por tipo", value=tipo_txt, inline=False)
-
-        # Preview datos (primeros 5)
-        if df is not None and not df.empty:
-            preview = df.head(5)[["tipo","dato"]].to_string(index=False)
-            e_done.add_field(
-                name="👀 Preview",
-                value=f"```{preview[:800]}```",
-                inline=False
-            )
-
-        e_done.set_footer(text=f"AutoScraper Bot • {', '.join([os.path.basename(f) for f in files])}")
-        await msg.edit(embed=e_done)
-
-        # Adjuntar archivos
-        discord_files = []
-        for fp in files:
-            if os.path.exists(fp) and os.path.getsize(fp) < 8 * 1024 * 1024:  # <8MB
-                discord_files.append(discord.File(fp))
-
-        if discord_files:
-            await ctx.send(
-                content=f"📎 **Archivos generados** ({len(discord_files)}):",
-                files=discord_files
-            )
-
-        # Mensaje final con resumen
-        await ctx.send(embed=discord.Embed(
-            description=f"🎉 {ctx.author.mention} ¡Listo! Se extrajeron **{n_rows} registros** de **{len(urls)} página(s)**.",
-            color=COLOR_OK
+        await msg.edit(embed=discord.Embed(
+            description=f"❌ Error: {ex}",
+            color=0xef4444
         ))
-
-    except Exception as ex:
-        await msg.edit(embed=embed_err(
-            "Error inesperado",
-            f"```{str(ex)[:400]}```\n\nIntenta con `!ayuda` para ver el uso correcto."
-        ))
-        raise ex
+        print(ex)
