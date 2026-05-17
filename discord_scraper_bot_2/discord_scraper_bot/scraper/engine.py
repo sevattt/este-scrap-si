@@ -129,9 +129,12 @@ def _fetch(url, engine, ua, proxy, session):
     return _fetch_requests(url, session)
 
 def _fetch_requests(url, session):
+    api_key = os.environ.get("SCRAPERAPI_KEY")
+    if api_key:
+        url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
     try:
         session.headers.update({"Referer": "https://www.google.com/"})
-        r = session.get(url, timeout=20, allow_redirects=True)
+        r = session.get(url, timeout=60, allow_redirects=True)
         r.raise_for_status()
         try:
             text = r.content.decode(r.encoding or "utf-8", errors="replace") if r.encoding else r.text
@@ -143,7 +146,7 @@ def _fetch_requests(url, session):
     except requests.exceptions.ConnectionError as e:
         return None, 0, f"Conexion fallida: {e}"
     except requests.exceptions.Timeout:
-        return None, 0, "Timeout (>20s)"
+        return None, 0, "Timeout (>60s)"
     except Exception as e:
         return None, 0, str(e)
 
