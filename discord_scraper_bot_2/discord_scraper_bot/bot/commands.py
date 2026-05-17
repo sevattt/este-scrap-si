@@ -214,9 +214,8 @@ def register_commands(bot):
         e.add_field(name="Plataforma",value=f"`{platform.system()}`",                 inline=True)
         e.set_footer(text="AutoScraper Bot v1.0")
         await ctx.send(embed=e)
-
-        # ── !ml ──────────────────────────────────────────────────────────────
-      # ── !ml ──────────────────────────────────────────────────────────────
+      
+           # ── !ml ──────────────────────────────────────────────────────────────
     @bot.command(name="ml", aliases=["mercadolibre", "meli"])
     async def mercadolibre(ctx, *, busqueda: str):
 
@@ -270,3 +269,63 @@ def register_commands(bot):
                         return
 
                     data = await r.json()
+
+            items = data.get("results", [])
+
+            if not items:
+                await msg.edit(embed=discord.Embed(
+                    description="No se encontraron resultados.",
+                    color=0xef4444
+                ))
+                return
+
+            rows = [{
+                "Producto": i.get("title", "")[:100],
+                "Precio": f"${i.get('price', 0):,.0f}",
+                "Precio_num": i.get("price", 0),
+                "Condición": i.get("condition", ""),
+                "Link": i.get("permalink", ""),
+                "Vendedor": i.get("seller", {}).get("nickname", ""),
+                "Envío gratis": "✅" if i.get("shipping", {}).get("free_shipping") else "❌",
+            } for i in items]
+
+            df = pd.DataFrame(rows)
+
+            precio_min = df["Precio_num"].min()
+            precio_max = df["Precio_num"].max()
+            precio_avg = df["Precio_num"].mean()
+
+            e = discord.Embed(
+                title=f"✅ MercadoLibre — {busqueda}",
+                color=0xFFE600
+            )
+
+            e.add_field(name="Resultados", value=f"`{len(items)}`", inline=True)
+            e.add_field(name="Precio más bajo", value=f"`${precio_min:,.0f}`", inline=True)
+            e.add_field(name="Precio más alto", value=f"`${precio_max:,.0f}`", inline=True)
+            e.add_field(name="Precio promedio", value=f"`${precio_avg:,.0f}`", inline=True)
+
+            top3 = df.nsmallest(3, "Precio_num")[["Producto", "Precio"]]
+
+            preview = "\n".join(
+                f"• {r['Producto'][:50]} — **{r['Precio']}**"
+                for _, r in top3.iterrows()
+            )
+
+            e.add_field(
+                name="🏆 Top 3 más baratos",
+                value=preview,
+                inline=False
+            )
+
+            await msg.edit(embed=e)
+
+        except Exception as ex:
+
+            await msg.edit(embed=discord.Embed(
+                title="❌ Error MercadoLibre",
+                description=f"```{str(ex)[:800]}```",
+                color=0xef4444
+            ))
+
+            print(ex)
