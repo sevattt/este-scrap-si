@@ -29,18 +29,13 @@ def _excel(df, output_dir, base_name):
     path   = os.path.join(output_dir, f"{base_name}.xlsx")
     writer = pd.ExcelWriter(path, engine="openpyxl")
 
-    # ── Hoja Productos (la más importante para clientes) ──
     productos_df = _build_productos(df)
     if not productos_df.empty:
-        productos_df.to_excel(writer, sheet_name="🛍️ Productos", index=False)
+        productos_df.to_excel(writer, sheet_name="Productos", index=False)
 
-    # ── Hoja Resumen ──
-    _summary(df, productos_df).to_excel(writer, sheet_name="📊 Resumen", index=False)
+    _summary(df, productos_df).to_excel(writer, sheet_name="Resumen", index=False)
+    df.to_excel(writer, sheet_name="Todos", index=False)
 
-    # ── Hoja Todos los datos ──
-    df.to_excel(writer, sheet_name="📋 Todos", index=False)
-
-    # ── Una hoja por tipo ──
     for tipo in df["tipo"].unique():
         sub = df[df["tipo"] == tipo].reset_index(drop=True)
         sub.to_excel(writer, sheet_name=tipo[:31], index=False)
@@ -50,42 +45,82 @@ def _excel(df, output_dir, base_name):
     return path
 
 
+def _parse_precio(texto):
+    """Convierte texto de precio a float. Retorna None si no es un precio válido."""
+    t = texto.strip()
+
+    # Debe tener símbolo de moneda o texto de moneda
+    tiene_simbolo = any(s in t for s in ["$","€","£","¥","USD","EUR","COP","MXN"])
+    if not tiene_simbolo:
+        return None
+
+    # Extraer solo dígitos, puntos y comas
+    solo_nums = re.sub(r"[^\d.,]", "", t)
+    if not solo_nums:
+        return None
+
+    # Limpiar formato:
+    # $1,299.99 → 1299.99
+    # $1.299,99 → 1299.99
+    # $1299     → 1299.0
+    try:
+        # Detectar si usa coma como decimal (europeo) o punto
+        if re.search(r",\d{2}$", solo_nums):
+            # formato europeo: 1.299,99
+            solo_nums = solo_nums.replace(".", "").replace(",", ".")
+        elif re.search(r"\.\d{2}$", solo_nums):
+            # formato americano: 1,299.99
+            solo_nums = solo_nums.replace(",", "")
+        else:
+            solo_nums = solo_nums.replace(",", "").replace(".", "")
+
+        val = float(solo_nums)
+
+        # Filtrar precios irreales (muy altos o muy bajos)
+        if val <= 0 or val > 500000:
+            return None
+
+        return val
+    except Exception:
+        return None
+
+
 def _build_productos(df):
     """Construye hoja de productos combinando títulos y precios."""
-    titulos  = df[df["tipo"] == "titulo"]["dato"].tolist()
-    precios  = df[df["tipo"].isin(["precio","precio_raw"])]["dato"].tolist()
-    links    = df[df["tipo"] == "link"]["dato"].tolist()
+    titulos = df[df["tipo"] == "titulo"]["dato"].tolist()
+    
+    # Solo usar precios con símbolo, no precio_raw basura
+    precios_df = df[df["tipo"] == "precio"]["dato"].tolist()
+    
+    # Parsear precios válidos
+    precios_limpios = []
+    for p in precios_df:
+        val = _parse_precio(p)
+        if val is not None:
+            precios_limpios.append({"precio_texto": p.strip(), "precio_num": val})
 
-    if not titulos and not precios:
+    links = df[df["tipo"] == "link"]["dato"].tolist()
+    # Filtrar links de productos (no navegación)
+    links_productos = [l for l in links if any(x in l for x in ["/dp/", "/gp/", "/product", "item", "p=", "prod"])]
+    if not links_productos:
+        links_productos = links
+
+    if not titulos and not precios_limpios:
         return pd.DataFrame()
 
-    # Limpiar y convertir precios a número
-    precios_limpios = []
-    for p in precios:
-        num = re.sub(r"[^\d.,]", "", p)
-        num = num.replace(",", ".")
-        try:
-            # Manejar formato 1.299.99 → tomar último segmento
-            partes = num.split(".")
-            if len(partes) > 2:
-                num = "".join(partes[:-1]) + "." + partes[-1]
-            val = float(num)
-            if val > 0:
-                precios_limpios.append({"precio_texto": p.strip(), "precio_num": val})
-        except Exception:
-            pass
-
-    # Armar filas
     rows = []
     max_len = max(len(titulos), len(precios_limpios))
-    for i in range(max_len):
+
+    for i in range(min(max_len, 200)):  # máx 200 productos
         titulo = titulos[i] if i < len(titulos) else "—"
         precio_info = precios_limpios[i] if i < len(precios_limpios) else None
-        link = links[i] if i < len(links) else "—"
+        link = links_productos[i] if i < len(links_productos) else "—"
+
         rows.append({
+            "N°":            i + 1,
             "Producto":      titulo[:120],
             "Precio":        precio_info["precio_texto"] if precio_info else "—",
-            "Precio (num)":  precio_info["precio_num"]  if precio_info else None,
+            "Precio (USD)":  precio_info["precio_num"]  if precio_info else None,
             "Link":          link,
             "Fuente":        df["fuente"].iloc[0] if not df.empty else "—",
             "Fecha":         datetime.now().strftime("%Y-%m-%d"),
@@ -94,9 +129,9 @@ def _build_productos(df):
     productos_df = pd.DataFrame(rows)
 
     # Ordenar por precio de menor a mayor
-    if "Precio (num)" in productos_df.columns:
-        productos_df = productos_df.sort_values("Precio (num)", na_position="last")
-        productos_df = productos_df.reset_index(drop=True)
+    productos_df = productos_df.sort_values("Precio (USD)", na_position="last")
+    productos_df = productos_df.reset_index(drop=True)
+    productos_df["N°"] = range(1, len(productos_df) + 1)
 
     return productos_df
 
@@ -110,22 +145,33 @@ def _summary(df, productos_df):
         {"Métrica": "",                    "Valor": ""},
     ]
 
-    # Estadísticas de precios
-    if not productos_df.empty and "Precio (num)" in productos_df.columns:
-        nums = productos_df["Precio (num)"].dropna()
+    if not productos_df.empty and "Precio (USD)" in productos_df.columns:
+        nums = productos_df["Precio (USD)"].dropna()
         if not nums.empty:
             rows += [
-                {"Métrica": "── PRECIOS ──",      "Valor": ""},
+                {"Métrica": "── ANÁLISIS DE PRECIOS ──", "Valor": ""},
                 {"Métrica": "Precio más bajo",     "Valor": f"${nums.min():,.2f}"},
                 {"Métrica": "Precio más alto",     "Valor": f"${nums.max():,.2f}"},
                 {"Métrica": "Precio promedio",     "Valor": f"${nums.mean():,.2f}"},
+                {"Métrica": "Precio mediana",      "Valor": f"${nums.median():,.2f}"},
                 {"Métrica": "Total productos",     "Valor": len(nums)},
                 {"Métrica": "",                    "Valor": ""},
+                {"Métrica": "── TOP 3 MÁS BARATOS ──", "Valor": "Precio"},
             ]
-            # Top 3 más baratos
-            rows.append({"Métrica": "── TOP 3 MÁS BARATOS ──", "Valor": "Precio"})
-            for _, row in productos_df.dropna(subset=["Precio (num)"]).head(3).iterrows():
-                rows.append({"Métrica": f"  {row['Producto'][:50]}", "Valor": row["Precio"]})
+            for _, row in productos_df.dropna(subset=["Precio (USD)"]).head(3).iterrows():
+                rows.append({
+                    "Métrica": f"  {row['Producto'][:60]}",
+                    "Valor":   row["Precio"]
+                })
+            rows += [
+                {"Métrica": "",                     "Valor": ""},
+                {"Métrica": "── TOP 3 MÁS CAROS ──", "Valor": "Precio"},
+            ]
+            for _, row in productos_df.dropna(subset=["Precio (USD)"]).tail(3).iterrows():
+                rows.append({
+                    "Métrica": f"  {row['Producto'][:60]}",
+                    "Valor":   row["Precio"]
+                })
 
     rows += [
         {"Métrica": "", "Valor": ""},
@@ -140,46 +186,42 @@ def _summary(df, productos_df):
 def _style(path, tiene_productos=False):
     wb = load_workbook(path)
 
-    HDR_FILL  = PatternFill("solid", start_color="1a1a2e")
-    HDR_FONT  = Font(name="Arial", bold=True, color="00FF88", size=11)
-    ALT_FILL  = PatternFill("solid", start_color="F0FFF4")
-    PROD_FILL = PatternFill("solid", start_color="E8F5E9")  # verde claro productos
-    BORDER    = Border(bottom=Side(style="thin", color="DDDDDD"))
-    CENTER    = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    LEFT      = Alignment(horizontal="left",   vertical="center", wrap_text=True)
-
-    # Color especial para hoja de productos
-    PROD_HDR  = PatternFill("solid", start_color="0d6e3f")
-    PROD_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=12)
-
     for ws in wb.worksheets:
-        is_prod = ws.title == "🛍️ Productos"
+        is_prod    = ws.title == "Productos"
+        is_resumen = ws.title == "Resumen"
 
+        # Header
+        hdr_fill = PatternFill("solid", start_color="0d6e3f" if is_prod else "1a1a2e")
+        hdr_font = Font(name="Arial", bold=True,
+                        color="FFFFFF" if is_prod else "00FF88", size=11)
         for cell in ws[1]:
-            cell.font      = PROD_FONT if is_prod else HDR_FONT
-            cell.fill      = PROD_HDR  if is_prod else HDR_FILL
-            cell.alignment = CENTER
+            cell.font      = hdr_font
+            cell.fill      = hdr_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
 
+        # Filas de datos
+        alt_fill  = PatternFill("solid", start_color="E8F5E9" if is_prod else "F0FFF4")
+        border    = Border(bottom=Side(style="thin", color="DDDDDD"))
         for i, row in enumerate(ws.iter_rows(min_row=2), 2):
             for cell in row:
-                cell.alignment = LEFT
-                cell.border    = BORDER
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                cell.border    = BORDER = border
                 if i % 2 == 0:
-                    cell.fill = PROD_FILL if is_prod else ALT_FILL
+                    cell.fill = alt_fill
 
-        ws.freeze_panes = "A2"
-
-        for col in ws.columns:
-            w = max((len(str(c.value)) if c.value else 0) for c in col)
-            ws.column_dimensions[get_column_letter(col[0].column)].width = min(max(w+2, 12), 60)
-
-        ws.row_dimensions[1].height = 24
-
-        # Resaltar fila más barata en hoja productos
+        # Resaltar fila más barata en Productos
         if is_prod and ws.max_row > 2:
             for cell in ws[2]:
                 cell.fill = PatternFill("solid", start_color="C8E6C9")
                 cell.font = Font(name="Arial", bold=True, color="1B5E20")
+
+        ws.freeze_panes = "A2"
+        ws.row_dimensions[1].height = 24
+
+        # Ancho columnas
+        for col in ws.columns:
+            w = max((len(str(c.value)) if c.value else 0) for c in col)
+            ws.column_dimensions[get_column_letter(col[0].column)].width = min(max(w+2, 10), 60)
 
     wb.save(path)
 
