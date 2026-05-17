@@ -148,5 +148,8 @@ discord_scraper_bot/
 → Instala Playwright: `pip install playwright && playwright install chromium`
 → Luego en Discord: `!config motor playwright`
 
+
+CABE RESALTAR:esto fue desarollado con ayuda de claude a pesar de  todo el bot no funcionara asi,tendran que registrarse a railway.com con su github :V luego de eso amigos buscaran dentro de su proyecto en railway justo al lado de "deployments" y justo al lado estan variable crean algo asi "DISCORD_TOKEN" y al lado "tu token" luego te registraras en SCRAPERAPI se registran bien? sacan su key y repiten lo mismo que con el token en railway ponen "SCRAPERAPI_KEY" Y "tu key"
+
 **Los archivos son muy grandes para Discord (>8MB)**
 → El bot los guarda en `/data/` de todas formas. Usa `!historial` para verlos.
