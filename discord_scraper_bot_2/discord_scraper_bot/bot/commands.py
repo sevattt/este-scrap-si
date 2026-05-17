@@ -256,7 +256,12 @@ def register_commands(bot):
                 timeout=timeout
             ) as session:
 
-                async with session.get(url, ssl=False) as r:
+                async with session.get(url, ssl=False) as r: 
+
+    print("STATUS:", r.status)
+
+    text = await r.text()
+    print(text[:500])
 
                     if r.status != 200:
                         text = await r.text()
