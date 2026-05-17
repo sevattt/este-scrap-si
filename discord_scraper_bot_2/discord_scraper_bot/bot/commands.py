@@ -216,8 +216,23 @@ def register_commands(bot):
         await ctx.send(embed=e)
 
         # ── !ml ──────────────────────────────────────────────────────────────
+      # ── !ml ──────────────────────────────────────────────────────────────
     @bot.command(name="ml", aliases=["mercadolibre", "meli"])
-            try:
+    async def mercadolibre(ctx, *, busqueda: str):
+
+        import aiohttp
+        import pandas as pd
+        from scraper.exporter import export_data
+        from urllib.parse import quote
+
+        pais = "MCO"
+
+        msg = await ctx.send(embed=discord.Embed(
+            title=f"🛒 Buscando en MercadoLibre: {busqueda}",
+            color=0xFFE600
+        ))
+
+        try:
             query = quote(busqueda)
 
             url = f"https://api.mercadolibre.com/sites/{pais}/search?q={query}&limit=50"
@@ -255,137 +270,3 @@ def register_commands(bot):
                         return
 
                     data = await r.json()
-            # Codificar búsqueda correctamente
-            query = quote(busqueda)
-
-            url = f"https://api.mercadolibre.com/sites/{pais}/search?q={query}&limit=50"
-
-            # Headers para evitar bloqueos
-            headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-    "Origin": "https://www.mercadolibre.com.co",
-    "Referer": "https://www.mercadolibre.com.co/",
-    "Connection": "keep-alive"
-}
-timeout = aiohttp.ClientTimeout(total=20)
-
-async with aiohttp.ClientSession(
-    headers=headers,
-    timeout=timeout
-) as session:
-
-    async with session.get(url, ssl=False) as r:
-
-                    # Verificar status HTTP
-                    if r.status != 200:
-                        text = await r.text()
-
-                        await msg.edit(embed=discord.Embed(
-                            title="❌ Error API MercadoLibre",
-                            description=f"Status: `{r.status}`\n```{text[:500]}```",
-                            color=0xef4444
-                        ))
-                        return
-
-                    data = await r.json()
-
-            items = data.get("results", [])
-
-            if not items:
-                await msg.edit(embed=discord.Embed(
-                    title="⚠️ Sin resultados",
-                    description=(
-                        f"No encontré productos para:\n"
-                        f"```{busqueda}```\n\n"
-                        f"URL consultada:\n{url}"
-                    ),
-                    color=0xf59e0b
-                ))
-                return
-
-            # Construir DataFrame
-            rows = [{
-                "Producto": i.get("title", "")[:100],
-                "Precio": f"${i.get('price', 0):,.0f}",
-                "Precio_num": i.get("price", 0),
-                "Condición": i.get("condition", ""),
-                "Link": i.get("permalink", ""),
-                "Vendedor": i.get("seller", {}).get("nickname", ""),
-                "Envío gratis": "✅" if i.get("shipping", {}).get("free_shipping") else "❌",
-            } for i in items]
-
-            df = pd.DataFrame(rows)
-
-            # Exportar
-            df_export = df.copy()
-            df_export["tipo"] = "producto"
-            df_export["fuente"] = "mercadolibre.com.co"
-            df_export["url_pagina"] = url
-            df_export["dato"] = df_export["Producto"]
-            df_export["atributo"] = df_export["Precio"]
-            df_export["fecha"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-            files = export_data(
-                df_export,
-                [],
-                "data",
-                f"meli_{ts}",
-                "all"
-            )
-
-            precio_min = df["Precio_num"].min()
-            precio_max = df["Precio_num"].max()
-            precio_avg = df["Precio_num"].mean()
-
-            e = discord.Embed(
-                title=f"✅ MercadoLibre — {busqueda}",
-                color=0xFFE600
-            )
-
-            e.add_field(name="Resultados", value=f"`{len(items)}`", inline=True)
-            e.add_field(name="Precio más bajo", value=f"`${precio_min:,.0f}`", inline=True)
-            e.add_field(name="Precio más alto", value=f"`${precio_max:,.0f}`", inline=True)
-            e.add_field(name="Precio promedio", value=f"`${precio_avg:,.0f}`", inline=True)
-
-            # Top productos
-            top3 = df.nsmallest(3, "Precio_num")[["Producto", "Precio", "Envío gratis"]]
-
-            preview = "\n".join(
-                f"• {r['Producto'][:50]} — **{r['Precio']}** {r['Envío gratis']}"
-                for _, r in top3.iterrows()
-            )
-
-            e.add_field(
-                name="🏆 Top 3 más baratos",
-                value=preview,
-                inline=False
-            )
-
-            await msg.edit(embed=e)
-
-            # Adjuntar archivos
-            discord_files = [
-                discord.File(f)
-                for f in files
-                if os.path.exists(f) and os.path.getsize(f) < 8 * 1024 * 1024
-            ]
-
-            if discord_files:
-                await ctx.send(files=discord_files)
-
-        except Exception as ex:
-            await msg.edit(embed=discord.Embed(
-                title="❌ Error inesperado",
-                description=f"```{str(ex)[:1000]}```",
-                color=0xef4444
-            ))
-
-            print("ERROR ML:", ex)
