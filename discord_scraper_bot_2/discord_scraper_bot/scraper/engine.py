@@ -1,4 +1,5 @@
-"""engine v3"""
+"""
+version v4 corregida
 Motor de scraping para el bot de Discord.
 Versión mejorada con: sesión persistente, headers completos,
 reintentos automáticos y debug detallado.
@@ -215,19 +216,24 @@ def _extract(soup, url, types):
                 add("telefono", ph.strip())
 
     if "prices" in types:
-        # AMAZON FIX: unir precio partido (37. + 99)
-        price_whole = soup.find_all(class_=re.compile(r"a-price-whole"))
-        price_frac  = soup.find_all(class_=re.compile(r"a-price-fraction"))
-        if price_whole:
-            for i, whole in enumerate(price_whole):
-                w = whole.get_text(strip=True).replace(".", "").replace(",", "")
-                f = price_frac[i].get_text(strip=True) if i < len(price_frac) else "00"
-                if w.isdigit():
-                    add("precio", f"${w}.{f}", "amazon-price")
-        for el in soup.find_all(class_=re.compile(r"price|precio|cost|amount|valor|monto", re.I)):
+        # Amazon fix: une precio partido (37. + 99 en elementos separados)
+        wholes = soup.find_all(class_=re.compile(r"a-price-whole"))
+        fracs  = soup.find_all(class_=re.compile(r"a-price-fraction"))
+        seen_amazon = set()
+        for i, whole in enumerate(wholes):
+            w = re.sub(r"\D", "", whole.get_text(strip=True))
+            f = re.sub(r"\D", "", fracs[i].get_text(strip=True)) if i < len(fracs) else "00"
+            if w and w not in seen_amazon:
+                seen_amazon.add(w)
+                add("precio", f"${w}.{f}", "amazon-price")
+        # Precios normales por clase CSS
+        for el in soup.find_all(class_=re.compile(r"(?<!whole)(?<!fraction)(?<!symbol)price|precio|cost|amount|valor|monto", re.I)):
             t = el.get_text(strip=True)
             if re.search(r"\d", t):
-                add("precio", t[:60], (el.get("class") or [""])[0])
+                match = re.search(r"[\$€£¥]\s?[\d,]+\.?\d{0,2}", t)
+                if match:
+                    add("precio", match.group().strip(), (el.get("class") or [""])[0])
+        # Patrón en texto
         for m in re.compile(r"[\$€£¥₩]\s?\d[\d.,]*|\d[\d.,]*\s?(?:USD|EUR|COP|MXN)").finditer(soup.get_text()):
             add("precio_raw", m.group().strip())
 
@@ -258,3 +264,4 @@ def _internal_links(soup, base_url):
         if p.netloc == domain and href not in links and p.scheme in ("http","https") and not href.endswith(skip):
             links.append(href)
     return links
+        
