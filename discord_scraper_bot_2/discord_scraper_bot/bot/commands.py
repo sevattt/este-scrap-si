@@ -238,12 +238,25 @@ def register_commands(bot):
 
             # Headers para evitar bloqueos
             headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json"
-            }
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+    "Origin": "https://www.mercadolibre.com.co",
+    "Referer": "https://www.mercadolibre.com.co/",
+    "Connection": "keep-alive"
+}
+timeout = aiohttp.ClientTimeout(total=20)
 
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url) as r:
+async with aiohttp.ClientSession(
+    headers=headers,
+    timeout=timeout
+) as session:
+
+    async with session.get(url, ssl=False) as r:
 
                     # Verificar status HTTP
                     if r.status != 200:
