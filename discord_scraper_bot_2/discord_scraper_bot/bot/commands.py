@@ -215,7 +215,7 @@ def register_commands(bot):
         e.set_footer(text="AutoScraper Bot v1.0")
         await ctx.send(embed=e)
 
-  ── !ml ──
+ # ── !ml ──
   @bot.command(name="ml", aliases=["mercadolibre","meli"])
   async def mercadolibre(ctx, *, busqueda: str):
       import aiohttp
