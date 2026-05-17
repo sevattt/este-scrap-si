@@ -215,10 +215,10 @@ def register_commands(bot):
         e.set_footer(text="AutoScraper Bot v1.0")
         await ctx.send(embed=e)
 
-# ── Función central de scraping ───────────────────────────────────────────────
-@bot.command(name="ml", aliases=["mercadolibre","meli"])
-async def mercadolibre(ctx, *, busqueda: str):
-    import aiohttp
+  ── !ml ──
+  @bot.command(name="ml", aliases=["mercadolibre","meli"])
+  async def mercadolibre(ctx, *, busqueda: str):
+      import aiohttp
     pais = "MCO"  # Colombia, cambia a MLA=Argentina, MLM=Mexico, MLC=Chile
     msg = await ctx.send(embed=discord.Embed(
         title=f"🛒 Buscando en MercadoLibre: {busqueda}",
@@ -281,7 +281,7 @@ async def mercadolibre(ctx, *, busqueda: str):
 
     except Exception as ex:
         await msg.edit(embed=discord.Embed(description=f"❌ Error: {ex}", color=0xef4444))
-
+# ── Función central de scraping ──────────────────
 async def ejecutar_scraping(ctx, urls):
     cfg = load_config()
 
