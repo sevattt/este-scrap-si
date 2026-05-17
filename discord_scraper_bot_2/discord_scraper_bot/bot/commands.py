@@ -217,20 +217,44 @@ def register_commands(bot):
 
         # ── !ml ──────────────────────────────────────────────────────────────
     @bot.command(name="ml", aliases=["mercadolibre", "meli"])
-    async def mercadolibre(ctx, *, busqueda: str):
-        import aiohttp
-        import pandas as pd
-        from urllib.parse import quote
-        from scraper.exporter import export_data
+            try:
+            query = quote(busqueda)
 
-        pais = "MCO"  # Colombia, MLA=Argentina, MLM=Mexico, MLC=Chile
+            url = f"https://api.mercadolibre.com/sites/{pais}/search?q={query}&limit=50"
 
-        msg = await ctx.send(embed=discord.Embed(
-            title=f"🛒 Buscando en MercadoLibre: {busqueda}",
-            color=0xFFE600
-        ))
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+                "Origin": "https://www.mercadolibre.com.co",
+                "Referer": "https://www.mercadolibre.com.co/",
+                "Connection": "keep-alive"
+            }
 
-        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+
+            async with aiohttp.ClientSession(
+                headers=headers,
+                timeout=timeout
+            ) as session:
+
+                async with session.get(url, ssl=False) as r:
+
+                    if r.status != 200:
+                        text = await r.text()
+
+                        await msg.edit(embed=discord.Embed(
+                            title="❌ Error API MercadoLibre",
+                            description=f"Status: `{r.status}`\n```{text[:500]}```",
+                            color=0xef4444
+                        ))
+                        return
+
+                    data = await r.json()
             # Codificar búsqueda correctamente
             query = quote(busqueda)
 
