@@ -151,6 +151,87 @@ def register_commands(bot):
 
         except Exception as ex:
             await msg.edit(embed=discord.Embed(description=f"❌ Error: `{ex}`", color=COLOR_ERR))
+            @bot.command(name="amazon", aliases=["amz"])
+    async def amazon(ctx, *, busqueda: str):
+        import aiohttp
+        import pandas as pd
+        from scraper.exporter import export_data
+
+        api_key = os.environ.get("SCRAPERAPI_KEY", "")
+        msg = await ctx.send(embed=discord.Embed(
+            title=f"🛒 Buscando en Amazon: {busqueda}",
+            description="⏳ Un momento...",
+            color=0xFF9900
+        ))
+        try:
+            url = f"https://api.scraperapi.com/structured/amazon/search?api_key={api_key}&query={busqueda}&country=us"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                    data = await r.json()
+
+            items = data.get("results", data.get("organic_results", []))
+            if not items:
+                await msg.edit(embed=discord.Embed(description="No se encontraron resultados.", color=COLOR_ERR))
+                return
+
+            rows = []
+            for i in items:
+                precio_txt = i.get("price", i.get("price_string", "—"))
+                precio_num = 0
+                try:
+                    import re
+                    nums = re.sub(r"[^\d.]", "", str(precio_txt))
+                    precio_num = float(nums) if nums else 0
+                except Exception:
+                    pass
+                rows.append({
+                    "Producto":   i.get("name", i.get("title", ""))[:100],
+                    "Precio":     precio_txt,
+                    "Precio_num": precio_num,
+                    "Rating":     i.get("stars", i.get("rating", "—")),
+                    "Reviews":    i.get("total_reviews", i.get("reviews", "—")),
+                    "Link":       i.get("url", i.get("link", "—")),
+                    "ASIN":       i.get("asin", "—"),
+                })
+
+            df = pd.DataFrame(rows)
+            df_sorted = df[df["Precio_num"] > 0].sort_values("Precio_num").reset_index(drop=True)
+            if df_sorted.empty:
+                df_sorted = df
+
+            df_export = df_sorted.copy()
+            df_export["tipo"]       = "producto"
+            df_export["fuente"]     = "amazon.com"
+            df_export["url_pagina"] = url
+            df_export["dato"]       = df_export["Producto"]
+            df_export["atributo"]   = df_export["Precio"]
+            df_export["fecha"]      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            ts    = datetime.now().strftime("%Y%m%d_%H%M%S")
+            files = export_data(df_export, [], DATA_DIR, f"amazon_{ts}", "all")
+
+            nums_validos = df_sorted[df_sorted["Precio_num"] > 0]["Precio_num"]
+            e = discord.Embed(title=f"✅ Amazon — {busqueda}", color=0xFF9900)
+            e.add_field(name="Resultados",      value=f"`{len(items)}`",                                       inline=True)
+            e.add_field(name="Precio más bajo", value=f"`${nums_validos.min():,.2f}`" if not nums_validos.empty else "`—`", inline=True)
+            e.add_field(name="Precio más alto", value=f"`${nums_validos.max():,.2f}`" if not nums_validos.empty else "`—`", inline=True)
+            e.add_field(name="Precio promedio", value=f"`${nums_validos.mean():,.2f}`" if not nums_validos.empty else "`—`", inline=True)
+
+            top3 = df_sorted.head(3)
+            preview = "\n".join(
+                f"• {r['Producto'][:50]} — **{r['Precio']}** ⭐{r['Rating']}"
+                for _, r in top3.iterrows()
+            )
+            e.add_field(name="🏆 Top 3 más baratos", value=preview or "—", inline=False)
+            e.set_footer(text="Datos via ScraperAPI | Ordenado de menor a mayor precio")
+            await msg.edit(embed=e)
+
+            discord_files = [discord.File(f) for f in files if os.path.exists(f) and os.path.getsize(f) < 8*1024*1024]
+            if discord_files:
+                await ctx.send(content=f"📎 **Archivos generados ({len(discord_files)}):**", files=discord_files)
+
+        except Exception as ex:
+            await msg.edit(embed=discord.Embed(description=f"❌ Error: `{ex}`", color=COLOR_ERR))
 
     @bot.command(name="config", aliases=["cfg", "configurar"])
     async def config(ctx, clave: str = None, *, valor: str = None):
