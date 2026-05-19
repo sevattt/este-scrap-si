@@ -165,7 +165,7 @@ def register_commands(bot):
         ))
         try:
             response = client.chat.completions.create(
-                model="llama3-8b-8192",
+                model="llama3-8b-8192-versatile",
                 messages=[{
                     "role": "system",
                     "content": """Eres Octo, asistente de scraping. Analiza la consulta y responde SOLO con JSON asi:
