@@ -151,7 +151,8 @@ def register_commands(bot):
 
         except Exception as ex:
             await msg.edit(embed=discord.Embed(description=f"❌ Error: `{ex}`", color=COLOR_ERR))
-            @bot.command(name="buscar", aliases=["b", "octo"])
+
+    @bot.command(name="buscar", aliases=["b", "octo"])
     async def buscar(ctx, *, consulta: str):
         from groq import Groq as GroqClient
         import json
@@ -163,19 +164,12 @@ def register_commands(bot):
             color=0x7c3aed
         ))
         try:
-            # Groq interpreta qué quiere el usuario
             response = client.chat.completions.create(
                 model="llama3-8b-8192",
                 messages=[{
                     "role": "system",
-                    "content": """Eres Octo, asistente de scraping. 
-Analiza la consulta y responde SOLO con JSON así:
-{
-  "accion": "amazon" | "mercadolibre" | "scrape" | "desconocido",
-  "query": "término de búsqueda limpio",
-  "filtro_precio_max": null o número,
-  "explicacion": "qué vas a hacer en una línea"
-}"""
+                    "content": """Eres Octo, asistente de scraping. Analiza la consulta y responde SOLO con JSON asi:
+{"accion": "amazon" o "mercadolibre" o "scrape" o "desconocido", "query": "termino limpio", "explicacion": "que vas a hacer"}"""
                 }, {
                     "role": "user",
                     "content": consulta
@@ -184,14 +178,13 @@ Analiza la consulta y responde SOLO con JSON así:
             )
 
             raw = response.choices[0].message.content.strip()
-            # Limpiar JSON
-            import re
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
+            import re as re3
+            match = re3.search(r'\{.*\}', raw, re3.DOTALL)
             data = json.loads(match.group()) if match else {}
 
-            accion    = data.get("accion", "desconocido")
-            query     = data.get("query", consulta)
-            explicacion = data.get("explicacion", "")
+            accion      = data.get("accion", "desconocido")
+            query       = data.get("query", consulta)
+            explicacion = data.get("explicacion", "Procesando...")
 
             await msg.edit(embed=discord.Embed(
                 title=f"🐙 Octo — {explicacion}",
@@ -200,28 +193,24 @@ Analiza la consulta y responde SOLO con JSON así:
             ))
 
             if accion == "amazon":
-                ctx.message.content = f"!amazon {query}"
                 await amazon(ctx, busqueda=query)
             elif accion == "mercadolibre":
-                ctx.message.content = f"!ml {query}"
                 await mercadolibre(ctx, busqueda=query)
             elif accion == "scrape":
                 urls = extract_urls(consulta)
                 if urls:
                     await ejecutar_scraping(ctx, urls)
                 else:
-                    await ctx.send(embed=embed_warn("No encontré URLs", "Incluye una URL en tu consulta."))
+                    await ctx.send(embed=embed_warn("No encontre URLs", "Incluye una URL en tu consulta."))
             else:
                 await msg.edit(embed=discord.Embed(
-                    description="No entendí bien. Prueba:\n`!buscar laptops baratas en amazon`\n`!buscar pesas en mercadolibre`",
+                    description="No entendi. Prueba:\n`!buscar laptops en amazon`\n`!buscar pesas en mercadolibre`",
                     color=COLOR_WARN
                 ))
 
         except Exception as ex:
-            await msg.edit(embed=discord.Embed(
-                description=f"❌ Error: `{ex}`",
-                color=COLOR_ERR
-            ))
+            await msg.edit(embed=discord.Embed(description=f"Error: `{ex}`", color=COLOR_ERR))
+
 
     @bot.command(name="config", aliases=["cfg", "configurar"])
     async def config(ctx, clave: str = None, *, valor: str = None):
