@@ -92,10 +92,15 @@ def register_commands(bot):
             color=COLOR_ML
         ))
         try:
-            url = f"https://api.mercadolibre.com/sites/MCO/search?q={busqueda}&limit=50"
+            api_key = os.environ.get("SCRAPERAPI_KEY", "")
+            ml_url = f"https://api.mercadolibre.com/sites/MCO/search?q={busqueda}&limit=50"
+            url = f"http://api.scraperapi.com?api_key={api_key}&url={ml_url}"
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as r:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
                     data = await r.json()
+                
+                
+                    
 
             items = data.get("results", [])
             if not items:
