@@ -97,6 +97,7 @@ def register_commands(bot):
             async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
                     data = await r.json()
+                    print(data)  # ver qué devuelve
                 
                     
 
