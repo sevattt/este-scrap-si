@@ -383,16 +383,33 @@ def register_commands(bot):
         await ejecutar_scraping(ctx, urls)
 
     @bot.command(name="premium")
-    async def premium(ctx, *args):
-        if not args:
-            await ctx.send(embed=embed_warn("Falta la URL", "Uso: `!premium <url1> <url2> ...`\nPlan Premium: hasta 5 sitios, máxima profundidad."))
-            return
+    async def premium(ctx, *, consulta: str):
         cfg = load_config()
-        cfg["extract_types"] = ["titles", "prices", "links", "emails", "phones", "tables", "text", "images", "meta"]
+        cfg["extract_types"] = ["titles", "prices", "links", "emails", 
+                                 "phones", "tables", "text", "images", "meta"]
         cfg["depth"] = 3
-        urls = [u if u.startswith("http") else "https://" + u for u in args[:5]]
-        await ctx.send(embed=discord.Embed(description="👑 **Plan Premium** — extracción total", color=0xf59e0b))
-        await ejecutar_scraping(ctx, urls)
+
+        # Detectar si es búsqueda de amazon
+        if consulta.lower().startswith("amazon "):
+            query = consulta[7:].strip()
+            await ctx.send(embed=discord.Embed(
+                description=f"👑 **Plan Premium** — Amazon: {query}", color=0xf59e0b))
+            await amazon(ctx, busqueda=query)
+
+        # Detectar si es búsqueda de ML
+        elif consulta.lower().startswith("ml ") or consulta.lower().startswith("mercadolibre "):
+            query = consulta.split(" ", 1)[1].strip()
+            await ctx.send(embed=discord.Embed(
+                description=f"👑 **Plan Premium** — MercadoLibre: {query}", color=0xf59e0b))
+            await mercadolibre(ctx, busqueda=query)
+
+        # Si tiene URLs
+        else:
+            urls = [u if u.startswith("http") else "https://" + u 
+                    for u in consulta.split()[:5]]
+            await ctx.send(embed=discord.Embed(
+                description="👑 **Plan Premium** — extracción total", color=0xf59e0b))
+            await ejecutar_scraping(ctx, urls)
 
 
 
