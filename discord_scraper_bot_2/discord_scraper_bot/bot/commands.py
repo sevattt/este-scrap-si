@@ -92,14 +92,10 @@ def register_commands(bot):
             color=COLOR_ML
         ))
         try:
-            headers = {"User-Agent": "Mozilla/5.0 Chrome/124.0"}
             url = f"https://api.mercadolibre.com/sites/MCO/search?q={busqueda}&limit=50"
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as r:
                     data = await r.json()
-                    print(data)  # ver qué devuelve
-                
-                    
 
             items = data.get("results", [])
             if not items:
@@ -169,7 +165,7 @@ def register_commands(bot):
         ))
         try:
             response = client.chat.completions.create(
-                model="llama3.3-70b-versatile",
+                model="llama3-8b-8192",
                 messages=[{
                     "role": "system",
                     "content": """Eres Octo, asistente de scraping. Analiza la consulta y responde SOLO con JSON asi:
@@ -360,6 +356,43 @@ def register_commands(bot):
 
         except Exception as ex:
             await msg.edit(embed=discord.Embed(description=f"❌ Error: `{ex}`", color=COLOR_ERR))
+
+
+    @bot.command(name="basico", aliases=["basic"])
+    async def basico(ctx, *args):
+        if not args:
+            await ctx.send(embed=embed_warn("Falta la URL", "Uso: `!basico <url>`\nPlan básico: 1 sitio, títulos + precios + links."))
+            return
+        cfg = load_config()
+        cfg["extract_types"] = ["titles", "prices", "links"]
+        cfg["depth"] = 1
+        url = args[0] if args[0].startswith("http") else "https://" + args[0]
+        await ctx.send(embed=discord.Embed(description="📦 **Plan Básico** — títulos, precios y links", color=0x00cc66))
+        await ejecutar_scraping(ctx, [url])
+
+    @bot.command(name="pro")
+    async def pro(ctx, *args):
+        if not args:
+            await ctx.send(embed=embed_warn("Falta la URL", "Uso: `!pro <url1> <url2>`\nPlan Pro: hasta 3 sitios, extracción completa."))
+            return
+        cfg = load_config()
+        cfg["extract_types"] = ["titles", "prices", "links", "emails", "phones", "tables", "text"]
+        cfg["depth"] = 2
+        urls = [u if u.startswith("http") else "https://" + u for u in args[:3]]
+        await ctx.send(embed=discord.Embed(description="⚡ **Plan Pro** — extracción completa", color=0x6366f1))
+        await ejecutar_scraping(ctx, urls)
+
+    @bot.command(name="premium")
+    async def premium(ctx, *args):
+        if not args:
+            await ctx.send(embed=embed_warn("Falta la URL", "Uso: `!premium <url1> <url2> ...`\nPlan Premium: hasta 5 sitios, máxima profundidad."))
+            return
+        cfg = load_config()
+        cfg["extract_types"] = ["titles", "prices", "links", "emails", "phones", "tables", "text", "images", "meta"]
+        cfg["depth"] = 3
+        urls = [u if u.startswith("http") else "https://" + u for u in args[:5]]
+        await ctx.send(embed=discord.Embed(description="👑 **Plan Premium** — extracción total", color=0xf59e0b))
+        await ejecutar_scraping(ctx, urls)
 
 
 
