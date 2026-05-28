@@ -121,7 +121,7 @@ def _crawl(url, max_depth, cur_depth, engine, types, delay, proxy, ua, visited, 
     dlog(f"  {len(items)} items extraidos")
     time.sleep(delay + random.uniform(0.2, delay * 0.3))
     if cur_depth < max_depth:
-        for link in _internal_links(soup, url)[:8]:
+        for link in _internal_links(soup, url)[:15]:
             _crawl(link, max_depth, cur_depth+1, engine, types, delay, proxy, ua, visited, all_data, session, dlog)
 
 def _fetch(url, engine, ua, proxy, session):
